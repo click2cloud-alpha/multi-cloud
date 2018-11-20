@@ -141,18 +141,18 @@ func (ad *AwsAdapter) DELETE(object *pb.DeleteObjectInput, ctx context.Context) 
 
 	bucket := ad.backend.BucketName
 
-	newObjectKey := object.Bucket + "/" + object.Key
-
-	deleteInput := awss3.DeleteObjectInput{Bucket: &bucket, Key: &newObjectKey}
-
-	svc := awss3.New(ad.session)
-	_, err := svc.DeleteObject(&deleteInput)
-	if err != nil {
-		log.Logf("Delete object failed, err:%v\n", err)
-		return InternalError
-	}
-
-	log.Logf("Delete object %s from aws successfully.\n", newObjectKey)
+	//newObjectKey := object.Bucket + "/" + object.Key
+	//
+	//deleteInput := awss3.DeleteObjectInput{Bucket: &bucket, Key: &newObjectKey}
+	//
+	//svc := awss3.New(ad.session)
+	//_, err := svc.DeleteObject(&deleteInput)
+	//if err != nil {
+	//	log.Logf("Delete object failed, err:%v\n", err)
+	//	return InternalError
+	//}
+	//
+	//log.Logf("Delete object %s from aws successfully.\n", newObjectKey)
 
 	return NoError
 }
