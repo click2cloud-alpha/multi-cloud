@@ -113,7 +113,7 @@ func (ad *CephAdapter) PUT(stream io.Reader, object *pb.Object, ctx context.Cont
 
 		err = ceph_object.Create(object.ObjectKey, md5, string(contentType), length, body, models.PublicReadWrite)
 		if err != nil {
-			s3error := S3Error{500, err.Error()}
+			s3error := S3Error{501, err.Error()}
 
 			return s3error
 		}
