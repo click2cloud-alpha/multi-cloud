@@ -102,16 +102,14 @@ func (ad *CephAdapter) PUT(stream io.Reader, object *pb.Object, ctx context.Cont
 	if ctx.Value("operation") == "upload" {
 		bucket := ad.session.NewBucket()
 
-		ceph_object := bucket.NewObject(object.BucketName)
+		ceph_object := bucket.NewObject(ad.backend.BucketName)
 
-		md5 := object.ContentMd5
-
-		contentType := object.ContentType
-
-		i, err := strconv.Atoi(object.ContentLength)
-		length := int64(i)
 		d, err := ioutil.ReadAll(stream)
 		data := []byte(d)
+		md5 := md5Content(data)
+		contentType, err := getFileContentTypeCephOrAWS(data)
+
+		length := int64(len(d))
 		body := ioutil.NopCloser(bytes.NewReader(data))
 
 		err = ceph_object.Create(object.ObjectKey, md5, string(contentType), length, body, models.PublicReadWrite)
@@ -173,7 +171,7 @@ func (ad *CephAdapter) GET(object *pb.Object, context context.Context, start int
 	if context.Value("operation") == "download" {
 		bucket := ad.session.NewBucket()
 
-		ceph_object := bucket.NewObject(object.BucketName)
+		ceph_object := bucket.NewObject(ad.backend.BucketName)
 
 		get_object, err := ceph_object.Get(object.ObjectKey, &getObjectOpetion)
 		if err != nil {
@@ -196,7 +194,7 @@ func (ad *CephAdapter) DELETE(object *pb.DeleteObjectInput, ctx context.Context)
 
 	bucket := ad.session.NewBucket()
 
-	ceph_object := bucket.NewObject(object.Bucket)
+	ceph_object := bucket.NewObject(ad.backend.BucketName)
 
 	err := ceph_object.Remove(object.Key)
 	//bucket := ad.backend.BucketName
@@ -241,7 +239,7 @@ func (ad *CephAdapter) GetObjectInfo(bucketName string, key string, context cont
 
 func (ad *CephAdapter) InitMultipartUpload(object *pb.Object, context context.Context) (*pb.MultipartUpload, S3Error) {
 	bucket := ad.session.NewBucket()
-	ceph_object := bucket.NewObject(object.BucketName)
+	ceph_object := bucket.NewObject(ad.backend.BucketName)
 	uploader := ceph_object.NewUploads(object.ObjectKey)
 	multipartUpload := &pb.MultipartUpload{}
 
@@ -253,7 +251,7 @@ func (ad *CephAdapter) InitMultipartUpload(object *pb.Object, context context.Co
 		return nil, s3error
 	} else {
 		//sample.UploadId = res.UploadID
-		multipartUpload.Bucket = object.BucketName
+		multipartUpload.Bucket = ad.backend.BucketName
 		multipartUpload.Key = object.ObjectKey
 		multipartUpload.UploadId = res.UploadID
 		return multipartUpload, NoError
