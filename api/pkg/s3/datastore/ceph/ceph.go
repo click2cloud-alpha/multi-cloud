@@ -20,10 +20,8 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	//"github.com/aws/aws-sdk-go/aws/session"
-	awss3 "github.com/aws/aws-sdk-go/service/s3"
+
 	//"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/click2cloud-alpha/s3client"
 	. "github.com/click2cloud-alpha/s3client"
@@ -36,9 +34,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"strconv"
-	"time"
 )
 
 type CephAdapter struct {
@@ -400,25 +396,42 @@ func (ad *CephAdapter) CompleteMultipartUpload(multipartUpload *pb.MultipartUplo
 }
 
 func (ad *CephAdapter) AbortMultipartUpload(multipartUpload *pb.MultipartUpload, context context.Context) S3Error {
-	bucket := ad.backend.BucketName
-	newObjectKey := multipartUpload.Bucket + "/" + multipartUpload.Key
-	abortInput := &awss3.AbortMultipartUploadInput{
-		Bucket:   &bucket,
-		Key:      &newObjectKey,
-		UploadId: &multipartUpload.UploadId,
-	}
+	//bucket := ad.backend.BucketName
+	//newObjectKey := multipartUpload.Bucket + "/" + multipartUpload.Key
+	//abortInput := &awss3.AbortMultipartUploadInput{
+	//	Bucket:   &bucket,
+	//	Key:      &newObjectKey,
+	//	UploadId: &multipartUpload.UploadId,
+	//}
+	//
+	//svc := awss3.New(ad.session)
+	//rsp, err := svc.AbortMultipartUpload(abortInput)
 
-	svc := awss3.New(ad.session)
-	rsp, err := svc.AbortMultipartUpload(abortInput)
+	bucket := ad.session.NewBucket()
+	ceph_object := bucket.NewObject(multipartUpload.Bucket)
+	uploader := ceph_object.NewUploads(multipartUpload.Key)
+	err := uploader.RemoveUploads(multipartUpload.UploadId)
+
 	if err != nil {
 		log.Logf("abortMultipartUploadS3 failed, err:%v\n", err)
 		return S3Error{Code: 500, Description: err.Error()}
 	} else {
-		log.Logf("abortMultipartUploadS3 successfully, rsp:%v\n", rsp)
+		log.Logf("abortMultipartUploadS3 successfully\n")
 	}
 	return NoError
 }
 
 func (ad *CephAdapter) ListParts(listParts *pb.ListParts, context context.Context) (*model.ListPartsOutput, S3Error) {
+	bucket := ad.session.NewBucket()
+	ceph_object := bucket.NewObject(listParts.Bucket)
+	uploader := ceph_object.NewUploads(listParts.Key)
+
+	value1, err := uploader.ListPart(listParts.UploadId)
+	if err != nil {
+		fmt.Println("Error Occured")
+		fmt.Println(err)
+	} else {
+		fmt.Println(value1)
+	}
 	return nil, NoError
 }
