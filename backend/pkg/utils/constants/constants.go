@@ -18,5 +18,5 @@ const (
 	BackendTypeAws   = "aws-s3"
 	BackendTypeObs   = "hw-obs"
 	BackendTypeAzure = "azure-blob"
-	BackendTypeCeph  = "ceph"
+	BackendTypeCeph  = "ceph-s3"
 )

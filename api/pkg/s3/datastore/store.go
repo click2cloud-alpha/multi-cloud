@@ -45,7 +45,7 @@ func Init(backend *backendpb.BackendDetail) (DataStoreAdapter, S3Error) {
 		//DbAdapter = mongo.Init(strings.Split(db.Endpoint, ","))
 		StoreAdapter = aws.Init(backend)
 		return StoreAdapter, NoError
-	case "ceph":
+	case "ceph-s3":
 		//DbAdapter = mongo.Init(strings.Split(db.Endpoint, ","))
 		StoreAdapter = ceph.Init(backend)
 		return StoreAdapter, NoError
