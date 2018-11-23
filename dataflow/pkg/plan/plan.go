@@ -64,10 +64,23 @@ func checkConnValidation(conn *Connector) error {
 	}
 	if conn.StorType == STOR_TYPE_CEPH_S3 {
 		flag = 1
-	} else {
-
-		flag = 0
+		cfg := conn.ConnConfig
+		for i := 0; i < len(cfg); i++ {
+			switch cfg[i].Key {
+			case "endpoint":
+				flag = flag | BIT_ENDPOINT
+			case "bucketname":
+				flag = flag | BIT_BUCKETNAME
+			case "access":
+				flag = flag | BIT_ACCESS
+			case "security":
+				flag = flag | BIT_SECURITY
+			default:
+				log.Logf("Uknow key[%s] for connector.\n", cfg[i].Key)
+			}
+		}
 	}
+	flag = 0
 	cfg := conn.ConnConfig
 	for i := 0; i < len(cfg); i++ {
 		switch cfg[i].Key {

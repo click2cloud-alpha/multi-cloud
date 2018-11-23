@@ -225,8 +225,8 @@ func (mover *CephS3Mover) UploadObj(objKey string, destLoca *LocationInfo, buf [
 
 func (mover *CephS3Mover) DownloadObj(objKey string, srcLoca *LocationInfo, buf []byte) (size int64, err error) {
 	log.Logf("[cephs3mover] DownloadObj object, key:%s.", objKey)
-
-	bucket := mover.downloader.CephS3.NewBucket()
+	sess := NewClient(srcLoca.EndPoint, srcLoca.Access, srcLoca.Security)
+	bucket := sess.NewBucket()
 	cephObject := bucket.NewObject(srcLoca.BucketName)
 	res, err := cephObject.Get(objKey, nil)
 	numBytes := int64(0)
@@ -288,11 +288,10 @@ func (mover *CephS3Mover) DownloadRange(objKey string, srcLoca *LocationInfo, bu
 }
 
 func (mover *CephS3Mover) MultiPartUploadInit(objKey string, destLoca *LocationInfo) error {
-	//sess := NewClient(destLoca.EndPoint, destLoca.Access, destLoca.Security)
-	//bucket := sess.NewBucket()
-	//cephObject := bucket.NewObject(destLoca.BucketName)
-	//
-	//destUploader := cephObject.NewUploads(objKey)
+	sess := NewClient(destLoca.EndPoint, destLoca.Access, destLoca.Security)
+	bucket := sess.NewBucket()
+	cephObject := bucket.NewObject(destLoca.BucketName)
+	mover.svc = cephObject.NewUploads(objKey)
 
 	//s3c := s3Cred{ak: destLoca.Access, sk: destLoca.Security}
 	//creds := credentials.NewCredentials(&s3c)
@@ -326,6 +325,7 @@ func (mover *CephS3Mover) MultiPartUploadInit(objKey string, destLoca *LocationI
 			return nil
 		}
 	}
+	cephObject.SetACL(objKey, models.PublicReadWrite)
 
 	//log.Logf("[s3mover] Init multipart upload[objkey:%s], should not be here.\n", objKey)
 	//return errors.New("internal error")
@@ -444,6 +444,7 @@ func (mover *CephS3Mover) CompleteMultipartUpload(objKey string, destLoca *Locat
 			return nil
 		}
 	}
+
 	//completeInput := &s3.CompleteMultipartUploadInput{
 	//	Bucket:   aws.String(destLoca.BucketName),
 	//	Key:      aws.String(objKey),
