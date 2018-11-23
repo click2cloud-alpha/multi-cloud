@@ -21,12 +21,20 @@ import (
 	"errors"
 	. "github.com/click2cloud-alpha/s3client"
 	"github.com/click2cloud-alpha/s3client/models"
+
+	"io/ioutil"
+	"net/http"
+
+	//"github.com/aws/aws-sdk-go/aws"
+	//"github.com/aws/aws-sdk-go/aws/credentials"
+	//"github.com/aws/aws-sdk-go/aws/session"
+	//"github.com/aws/aws-sdk-go/service/s3"
+	//"github.com/aws/aws-sdk-go/service/s3/s3manager"
+
 	"github.com/micro/go-log"
 	. "github.com/opensds/multi-cloud/datamover/pkg/utils"
 	pb "github.com/opensds/multi-cloud/datamover/proto"
 	"io"
-	"io/ioutil"
-	"net/http"
 )
 
 // DefaultDownloadPartSize is the default range of bytes to get at a time when
@@ -186,7 +194,9 @@ func (mover *CephS3Mover) UploadObj(objKey string, destLoca *LocationInfo, buf [
 	data := []byte(buf)
 	body := ioutil.NopCloser(bytes.NewReader(data))
 	log.Logf("[cephs3mover] Try to upload, bucket:%s,obj:%s\n", destLoca.BucketName, objKey)
+
 	err = cephObject.Create(objKey, md5, string(contentType), length, body, models.BucketOwnerFull)
+
 	if err != nil {
 		log.Logf("[cephs3mover] Upload object[%s] failed, err:%v\n", objKey, err)
 		//s3error := S3Error{501, err.Error()}
@@ -278,70 +288,109 @@ func (mover *CephS3Mover) DownloadRange(objKey string, srcLoca *LocationInfo, bu
 }
 
 func (mover *CephS3Mover) MultiPartUploadInit(objKey string, destLoca *LocationInfo) error {
-	s3c := s3Cred{ak: destLoca.Access, sk: destLoca.Security}
-	creds := credentials.NewCredentials(&s3c)
-	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String(destLoca.Region),
-		Endpoint:    aws.String(destLoca.EndPoint),
-		Credentials: creds,
-	})
-	if err != nil {
-		log.Logf("[cephs3mover] New session failed, err:%v\n", err)
-		return err
+	//sess := NewClient(destLoca.EndPoint, destLoca.Access, destLoca.Security)
+	//bucket := sess.NewBucket()
+	//cephObject := bucket.NewObject(destLoca.BucketName)
+	//
+	//destUploader := cephObject.NewUploads(objKey)
+
+	//s3c := s3Cred{ak: destLoca.Access, sk: destLoca.Security}
+	//creds := credentials.NewCredentials(&s3c)
+	//sess, err := session.NewSession(&aws.Config{
+	//	Region:      aws.String(destLoca.Region),
+	//	Endpoint:    aws.String(destLoca.EndPoint),
+	//	Credentials: creds,
+	//})
+	//if err != nil {
+	//	log.Logf("[cephs3mover] New session failed, err:%v\n", err)
+	//	return err
+	//}
+	//
+	//mover.svc = s3.New(sess)
+	//multiUpInput := &s3.CreateMultipartUploadInput{
+	//	Bucket: aws.String(destLoca.BucketName),
+	//	Key:    aws.String(objKey),
+	//}
+	//resp, err := mover.svc.CreateMultipartUpload(multiUpInput)
+	log.Logf("[s3mover] Try to init multipart upload[objkey:%s].\n", objKey)
+	for tries := 1; tries <= 3; tries++ {
+		resp, err := mover.svc.Initiate(nil)
+		if err != nil {
+			log.Logf("[s3mover] Init multipart upload[objkey:%s] failed %d times.\n", objKey, tries)
+			if tries == 3 {
+				return err
+			}
+		} else {
+			mover.multiUploadInitOut = &CreateMultipartUploadOutput{resp.UploadID}
+			log.Logf("[s3mover] Init multipart upload[objkey:%s] successfully, UploadId:%s\n", objKey, resp.UploadID)
+			return nil
+		}
 	}
 
-	mover.svc = s3.New(sess)
-	multiUpInput := &s3.CreateMultipartUploadInput{
-		Bucket: aws.String(destLoca.BucketName),
-		Key:    aws.String(objKey),
-	}
-	resp, err := mover.svc.CreateMultipartUpload(multiUpInput)
-	if err != nil {
-		log.Logf("[cephs3mover] Init multipart upload[objkey:%s] failed, err:%v\n", objKey, err)
-		return errors.New("[cephs3mover] Init multipart upload failed.")
-	} else {
-		log.Logf("[cephs3mover] Init multipart upload[objkey:%s] succeed, UploadId:%s\n", objKey, *resp.UploadId)
-	}
+	//log.Logf("[s3mover] Init multipart upload[objkey:%s], should not be here.\n", objKey)
+	//return errors.New("internal error")
+	//if err != nil {
+	//	log.Logf("[cephs3mover] Init multipart upload[objkey:%s] failed, err:%v\n", objKey, err)
+	//	return errors.New("[cephs3mover] Init multipart upload failed.")
+	//} else {
+	//	log.Logf("[cephs3mover] Init multipart upload[objkey:%s] succeed, UploadId:%s\n", objKey, resp.UploadID)
+	//}
+	//
+	////mover.uploadId = *resp.UploadId
+	//mover.multiUploadInitOut = &CreateMultipartUploadOutput{resp.UploadID}
+	log.Logf("[s3mover] Init multipart upload[objkey:%s], should not be here.\n", objKey)
+	return errors.New("internal error")
 
-	//mover.uploadId = *resp.UploadId
-	mover.multiUploadInitOut = resp
-	return nil
 }
 
 func (mover *CephS3Mover) UploadPart(objKey string, destLoca *LocationInfo, upBytes int64, buf []byte, partNumber int64, offset int64) error {
 	log.Logf("[cephs3mover] Upload range[objkey:%s, partnumber#%d,offset#%d,upBytes#%d,uploadid#%s]...\n", objKey, partNumber,
-		offset, upBytes, *mover.multiUploadInitOut.UploadId)
-	tries := 1
-	upPartInput := &s3.UploadPartInput{
-		Body:          bytes.NewReader(buf),
-		Bucket:        aws.String(destLoca.BucketName),
-		Key:           aws.String(objKey),
-		PartNumber:    aws.Int64(partNumber),
-		UploadId:      aws.String(*mover.multiUploadInitOut.UploadId),
-		ContentLength: aws.Int64(upBytes),
+		offset, upBytes, mover.multiUploadInitOut.UploadID)
+	//tries := 1
+	//sess := NewClient(destLoca.EndPoint, destLoca.Access, destLoca.Security)
+	//bucket := sess.NewBucket()
+	//cephObject := bucket.NewObject(destLoca.BucketName)
+	//destUploader := cephObject.NewUploads(objKey)
+	//upPartInput := &s3.UploadPartInput{
+	//	Body:          bytes.NewReader(buf),
+	//	Bucket:        aws.String(destLoca.BucketName),
+	//	Key:           aws.String(objKey),
+	//	PartNumber:    aws.Int64(partNumber),
+	//	UploadId:      aws.String(*mover.multiUploadInitOut.UploadId),
+	//	ContentLength: aws.Int64(upBytes),
+	//}
+	md5 := md5Content(buf)
+	contentType, err := getFileContentTypeCephOrAWS(buf)
+	if err != nil {
+		log.Logf("[cephs3mover]. err:%v\n", err)
 	}
 
-	for tries <= 3 {
-		upRes, err := mover.svc.UploadPart(upPartInput)
+	length := int64(len(buf))
+
+	data := []byte(buf)
+	body := ioutil.NopCloser(bytes.NewReader(data))
+
+	for tries := 1; tries <= 3; tries++ {
+		upRes, err := mover.svc.UploadPart(int(partNumber), mover.multiUploadInitOut.UploadID, md5, contentType, length, body)
 		if err != nil {
+			log.Logf("[s3mover] Upload range[objkey:%s, partnumber#%d, offset#%d] failed %d times, err:%v\n",
+				objKey, partNumber, offset, tries, err)
 			if tries == 3 {
-				log.Logf("[cephs3mover] Upload part [objkey:%s] failed. err:%v\n", objKey, err)
 				return err
 			}
-			log.Logf("[cephs3mover] Retrying to upload [objkey:%s] part#%d\n", objKey, partNumber)
-			tries++
 		} else {
-			log.Logf("[cephs3mover] Upload range[objkey:%s, partnumber#%d,offset#%d] successfully.\n", objKey, partNumber, offset)
-			part := s3.CompletedPart{
-				ETag:       upRes.ETag,
-				PartNumber: aws.Int64(partNumber),
-			}
-			mover.completeParts = append(mover.completeParts, &part)
-			break
+
+			//part := s3client.CompletePart{Etag: upRes.Etag, PartNumber:upRes.PartNumber}
+
+			//mover.completeParts = part
+
+			mover.completeParts = append(mover.completeParts, upRes)
+			log.Logf("[s3mover] Upload range[objkey:%s, partnumber#%d,offset#%d] successfully.\n", objKey, partNumber, offset)
+			return nil
 		}
 	}
-
-	return nil
+	log.Logf("[s3mover] Upload range[objkey:%s, partnumber#%d, offset#%d], should not be here.\n", objKey, partNumber, offset)
+	return errors.New("internal error")
 }
 
 func (mover *CephS3Mover) AbortMultipartUpload(objKey string, destLoca *LocationInfo) error {
@@ -360,48 +409,93 @@ func (mover *CephS3Mover) AbortMultipartUpload(objKey string, destLoca *Location
 }
 
 func (mover *CephS3Mover) CompleteMultipartUpload(objKey string, destLoca *LocationInfo) error {
-	completeInput := &s3.CompleteMultipartUploadInput{
-		Bucket:   aws.String(destLoca.BucketName),
-		Key:      aws.String(objKey),
-		UploadId: aws.String(*mover.multiUploadInitOut.UploadId),
-		MultipartUpload: &s3.CompletedMultipartUpload{
-			Parts: mover.completeParts,
-		},
-	}
+	//sess := NewClient(destLoca.EndPoint, destLoca.Access, destLoca.Security)
+	//bucket := sess.NewBucket()
+	//cephObject := bucket.NewObject(destLoca.BucketName)
+	//destUploader := cephObject.NewUploads(objKey)
 
-	rsp, err := mover.svc.CompleteMultipartUpload(completeInput)
-	if err != nil {
-		log.Logf("[cephs3mover] completeMultipartUploadS3 failed [objkey:%s], err:%v\n", objKey, err)
-	} else {
-		log.Logf("[cephs3mover] completeMultipartUploadS3 successfully [objkey:%s], rsp:%v\n", objKey, rsp)
-	}
+	//completeInput := &s3.CompleteMultipartUploadInput{
+	//	Bucket:   aws.String(destLoca.BucketName),
+	//	Key:      aws.String(objKey),
+	//	UploadId: aws.String(*mover.multiUploadInitOut.UploadId),
+	//	MultipartUpload: &s3.CompletedMultipartUpload{
+	//		Parts: mover.completeParts,
+	//	},
+	//}
 
-	return err
+	log.Logf("[s3mover] Try to do CompleteMultipartUpload [objkey:%s].\n", objKey)
+	for tries := 1; tries <= 3; tries++ {
+		var completeParts []CompletePart
+		for _, p := range mover.completeParts {
+			completePart := CompletePart{
+				Etag:       p.Etag,
+				PartNumber: int(p.PartNumber),
+			}
+			completeParts = append(completeParts, completePart)
+		}
+		rsp, err := mover.svc.Complete(mover.multiUploadInitOut.UploadID, completeParts)
+		if err != nil {
+			log.Logf("[s3mover] completeMultipartUpload [objkey:%s] failed %d times, err:%v\n", objKey, tries, err)
+			if tries == 3 {
+				return err
+			}
+		} else {
+			log.Logf("[s3mover] completeMultipartUpload successfully [objkey:%s], rsp:%v\n", objKey, rsp)
+			return nil
+		}
+	}
+	//completeInput := &s3.CompleteMultipartUploadInput{
+	//	Bucket:   aws.String(destLoca.BucketName),
+	//	Key:      aws.String(objKey),
+	//	UploadId: aws.String(*mover.multiUploadInitOut.UploadId),
+	//	MultipartUpload: &s3.CompletedMultipartUpload{
+	//		Parts: mover.completeParts,
+	//	},
+	//}
+	//
+	//rsp, err := mover.svc.CompleteMultipartUpload(completeInput)
+	//if err != nil {
+	//	log.Logf("[cephs3mover] completeMultipartUploadS3 failed [objkey:%s], err:%v\n", objKey, err)
+	//} else {
+	//	log.Logf("[cephs3mover] completeMultipartUploadS3 successfully [objkey:%s], rsp:%v\n", objKey, rsp)
+	//}
+	//
+	//return err
+	log.Logf("[s3mover] completeMultipartUpload [objkey:%s], should not be here.\n", objKey)
+	return errors.New("internal error")
 }
 
 func (mover *CephS3Mover) DeleteObj(objKey string, loca *LocationInfo) error {
-	s3c := s3Cred{ak: loca.Access, sk: loca.Security}
-	creds := credentials.NewCredentials(&s3c)
-	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String(loca.Region),
-		Endpoint:    aws.String(loca.EndPoint),
-		Credentials: creds,
-	})
-	if err != nil {
-		log.Logf("[cephs3mover] New session failed, err:%v\n", err)
-		return err
-	}
 
-	svc := s3.New(sess)
-	_, err = svc.DeleteObject(&s3.DeleteObjectInput{Bucket: aws.String(loca.BucketName), Key: aws.String(objKey)})
-	if err != nil {
-		log.Logf("[cephs3mover] Unable to delete object[key:%s] from bucket %s, %v\n", objKey, loca.BucketName, err)
-	}
+	sess := NewClient(loca.EndPoint, loca.Access, loca.Security)
+	bucket := sess.NewBucket()
 
-	err = svc.WaitUntilObjectNotExists(&s3.HeadObjectInput{
-		Bucket: aws.String(loca.BucketName),
-		Key:    aws.String(objKey),
-	})
+	cephObject := bucket.NewObject(loca.BucketName)
+
+	err := cephObject.Remove(objKey)
+
+	//s3c := s3Cred{ak: loca.Access, sk: loca.Security}
+	//creds := credentials.NewCredentials(&s3c)
+	//sess, err := session.NewSession(&aws.Config{
+	//	Region:      aws.String(loca.Region),
+	//	Endpoint:    aws.String(loca.EndPoint),
+	//	Credentials: creds,
+	//})
+	//if err != nil {
+	//	log.Logf("[cephs3mover] New session failed, err:%v\n", err)
+	//	return err
+	//}
+	//
+	//svc := s3.New(sess)
+	//_, err = svc.DeleteObject(&s3.DeleteObjectInput{Bucket: aws.String(loca.BucketName), Key: aws.String(objKey)})
+	//if err != nil {
+	//	log.Logf("[cephs3mover] Unable to delete object[key:%s] from bucket %s, %v\n", objKey, loca.BucketName, err)
+	//}
+	//
+	//err = svc.WaitUntilObjectNotExists(&s3.HeadObjectInput{
+	//	Bucket: aws.String(loca.BucketName),
+	//	Key:    aws.String(objKey),
+	//})
 	if err != nil {
 		log.Logf("[cephs3mover] Error occurred while waiting for object[%s] to be deleted.\n", objKey)
 	}
@@ -410,41 +504,67 @@ func (mover *CephS3Mover) DeleteObj(objKey string, loca *LocationInfo) error {
 	return err
 }
 
-func ListObjs(loca *LocationInfo, filt *pb.Filter) ([]*s3.Object, error) {
-	s3c := s3Cred{ak: loca.Access, sk: loca.Security}
-	creds := credentials.NewCredentials(&s3c)
-	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String(loca.Region),
-		Endpoint:    aws.String(loca.EndPoint),
-		Credentials: creds,
-	})
-	if err != nil {
-		log.Logf("[cephs3mover] New session failed, err:%v\n", err)
-		return nil, err
-	}
+func ListObjs(loca *LocationInfo, filt *pb.Filter) ([]models.GetBucketResponseContent, error) {
 
-	svc := s3.New(sess)
-	input := &s3.ListObjectsInput{Bucket: aws.String(loca.BucketName)}
+	sess := NewClient(loca.EndPoint, loca.Access, loca.Security)
+	bucket := sess.NewBucket()
+
+	//cephObject := bucket.NewObject(loca.BucketName)
+	//bucket := connection.NewBucket()
+	getBucket, err := bucket.Get(string(loca.BucketName), "", "", "", 1000)
+
 	if filt != nil {
-		input.Prefix = &filt.Prefix
-	}
-	output, e := svc.ListObjects(input)
-	if e != nil {
-		log.Logf("[cephs3mover] List aws bucket failed, err:%v\n", e)
-		return nil, e
+		getBucket.Prefix = filt.Prefix
 	}
 
-	objs := output.Contents
-	for *output.IsTruncated == true {
-		input.Marker = output.NextMarker
-		output, err = svc.ListObjects(input)
-		if err != nil {
-			log.Logf("[cephs3mover] List objects failed, err:%v\n", err)
-			return nil, err
-		}
-		objs = append(objs, output.Contents...)
+	output := getBucket.Contents //.ListObjects(input)
+	if err != nil {
+		log.Logf("[cephs3mover] Error occurred while waiting for object", err)
+		return getBucket.Contents, nil
 	}
+	//listObject :=getBucket.Contents
+	ObjectCounts := len(output)
+	//fmt.Println("list of bucks, %#v", no_object)
+	for i := 0; i < ObjectCounts; i++ {
+		resp := output[i]
+		//getBucket.Marker = output.NextMarker
+		//output, err = svc.ListObjects(input)
+		output = append(output, resp)
 
-	log.Logf("[cephs3mover] Number of objects in bucket[%s] is %d.\n", loca.BucketName, len(objs))
-	return output.Contents, nil
+		//for i := 0; i < ObjectCounts; i++ {
+		//	fmt.Println(listObject2[i].Key)
+		//	//fmt.Println(listObject2[i].LastModified)
+		//	//fmt.Println(listObject2[i].Owner)
+		//	fmt.Println("Size")
+		//	fmt.Println(listObject2[i].Size)
+		//	//fmt.Println(listObject2[i].StorageClass)
+		//}
+		//if err != nil {
+		//	fmt.Println(err)
+		//}
+		//
+		//input := &s3.ListObjectsInput{Bucket: aws.String(loca.BucketName)}
+		//if filt != nil {
+		//	input.Prefix = &filt.Prefix
+		//}
+		//output, e := svc.ListObjects(input)
+		//if e != nil {
+		//	log.Logf("[cephs3mover] List aws bucket failed, err:%v\n", e)
+		//	return nil, e
+		//}
+		//
+		//objs := output.Contents
+		//for ; *output.IsTruncated == true; {
+		//	input.Marker = output.NextMarker
+		//	output, err = svc.ListObjects(input)
+		//	if err != nil {
+		//		log.Logf("[cephs3mover] List objects failed, err:%v\n", err)
+		//		return nil, err
+		//	}
+		//	objs = append(objs, output.Contents...)
+		//}
+
+	}
+	log.Logf("[cephs3mover] Number of objects in bucket[%s] is %d.\n", loca.BucketName, len(output))
+	return output, nil
 }
