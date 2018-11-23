@@ -16,6 +16,7 @@ package datastore
 
 import (
 	"context"
+	"github.com/click2cloud-alpha/multi-cloud/api/pkg/s3/datastore/ceph"
 	"io"
 
 	"github.com/opensds/multi-cloud/api/pkg/s3/datastore/aws"
@@ -28,26 +29,30 @@ import (
 )
 
 // Init function can perform some initialization work of different datastore.
-func Init(backend *backendpb.BackendDetail) (DataStoreAdapter,S3Error) {
+func Init(backend *backendpb.BackendDetail) (DataStoreAdapter, S3Error) {
 	var StoreAdapter DataStoreAdapter
 
 	switch backend.Type {
 	case "azure-blob":
 		//DbAdapter = mongo.Init(strings.Split(db.Endpoint, ","))
-		StoreAdapter = azure.Init(backend) 
-		return StoreAdapter,NoError
+		StoreAdapter = azure.Init(backend)
+		return StoreAdapter, NoError
 	case "hw-obs":
 		//DbAdapter = mongo.Init(strings.Split(db.Endpoint, ","))
 		StoreAdapter = hws.Init(backend)
-		return StoreAdapter,NoError
+		return StoreAdapter, NoError
 	case "aws-s3":
 		//DbAdapter = mongo.Init(strings.Split(db.Endpoint, ","))
 		StoreAdapter = aws.Init(backend)
-		return StoreAdapter,NoError
+		return StoreAdapter, NoError
+	case "ceph-s3":
+		//DbAdapter = mongo.Init(strings.Split(db.Endpoint, ","))
+		StoreAdapter = ceph.Init(backend)
+		return StoreAdapter, NoError
 	default:
 
 	}
-	return nil,NoSuchType
+	return nil, NoSuchType
 }
 
 func Exit(backendType string) {
