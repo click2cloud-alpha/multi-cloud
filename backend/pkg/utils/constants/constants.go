@@ -19,4 +19,5 @@ const (
 	BackendTypeObs   = "hw-obs"
 	BackendTypeAzure = "azure-blob"
 	BackendTypeCeph  = "ceph-s3"
+	BackendFusionStorage = "fusionstorage-object"
 )
