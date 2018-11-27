@@ -270,7 +270,7 @@ func (ad *CephAdapter) UploadPart(stream io.Reader,
 	context context.Context) (*model.UploadPartResult, S3Error) {
 	tries := 1
 	bucket := ad.session.NewBucket()
-	ceph_object := bucket.NewObject(multipartUpload.Bucket)
+	ceph_object := bucket.NewObject(ad.backend.BucketName)
 	uploader := ceph_object.NewUploads(multipartUpload.Key)
 	for tries <= 3 {
 
@@ -340,7 +340,7 @@ func (ad *CephAdapter) CompleteMultipartUpload(multipartUpload *pb.MultipartUplo
 	context context.Context) (*model.CompleteMultipartUploadResult, S3Error) {
 
 	bucket := ad.session.NewBucket()
-	ceph_object := bucket.NewObject(multipartUpload.Bucket)
+	ceph_object := bucket.NewObject(ad.backend.BucketName)
 	uploader := ceph_object.NewUploads(multipartUpload.Key)
 	var completeParts []CompletePart
 	for _, p := range completeUpload.Part {
@@ -412,7 +412,7 @@ func (ad *CephAdapter) AbortMultipartUpload(multipartUpload *pb.MultipartUpload,
 	//rsp, err := svc.AbortMultipartUpload(abortInput)
 
 	bucket := ad.session.NewBucket()
-	ceph_object := bucket.NewObject(multipartUpload.Bucket)
+	ceph_object := bucket.NewObject(ad.backend.BucketName)
 	uploader := ceph_object.NewUploads(multipartUpload.Key)
 	err := uploader.RemoveUploads(multipartUpload.UploadId)
 
