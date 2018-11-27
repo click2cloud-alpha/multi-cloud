@@ -16,7 +16,6 @@ package datastore
 
 import (
 	"context"
-	"github.com/click2cloud-alpha/multi-cloud/api/pkg/s3/datastore/ceph"
 	"io"
 
 	"github.com/opensds/multi-cloud/api/pkg/s3/datastore/aws"
@@ -48,6 +47,10 @@ func Init(backend *backendpb.BackendDetail) (DataStoreAdapter, S3Error) {
 	case "ceph-s3":
 		//DbAdapter = mongo.Init(strings.Split(db.Endpoint, ","))
 		StoreAdapter = ceph.Init(backend)
+		return StoreAdapter, NoError
+		return StoreAdapter, NoError
+	case "fusionstorage-object":
+		StoreAdapter = hws.Init(backend)
 		return StoreAdapter, NoError
 	default:
 

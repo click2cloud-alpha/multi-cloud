@@ -331,14 +331,15 @@ func Run(ctx *c.Context, id string) (bson.ObjectId, error) {
 	if err == nil {
 		//TODO: change to send job to datamover by kafka
 		//This way send job is the temporary
-		filt := datamover.Filter{Prefix:plan.Filter.Prefix}
-		req := datamover.RunJobRequest{Id: job.Id.Hex(), RemainSource: plan.RemainSource, Filt:&filt}
+		filt := datamover.Filter{Prefix: plan.Filter.Prefix}
+		req := datamover.RunJobRequest{Id: job.Id.Hex(), RemainSource: plan.RemainSource, Filt: &filt}
 		srcConn := datamover.Connector{Type: plan.SourceConn.StorType}
 		buildConn(&srcConn, &plan.SourceConn)
 		req.SourceConn = &srcConn
 		destConn := datamover.Connector{Type: plan.DestConn.StorType}
 		buildConn(&destConn, &plan.DestConn)
 		req.DestConn = &destConn
+		req.RemainSource = job.RemainSource
 		go sendJob(&req)
 	} else {
 		log.Logf("Add job[id=%s,plan=%s,source_location=%s,dest_location=%s] to database failed.\n", string(job.Id.Hex()),
