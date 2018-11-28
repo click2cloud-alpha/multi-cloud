@@ -119,20 +119,6 @@ func (ad *CephAdapter) PUT(stream io.Reader, object *pb.Object, ctx context.Cont
 
 			return s3error
 		}
-		//uploader := s3manager.NewUploader(ad.session)
-		//_, err := uploader.Upload(&s3manager.UploadInput{
-		//	Bucket: &bucket,
-		//	Key:    &newObjectKey,
-		//	Body:   stream,
-		//})
-		//
-		//if err != nil {
-		//	log.Logf("Upload to aws failed:%v", err)
-		//	return S3Error{Code: 500, Description: "Upload to aws failed"}
-		//} else {
-		//	object.LastModified = time.Now().String()[:19]
-		//	log.Logf("LastModified is:%v\n", object.LastModified)
-		//}
 
 	}
 
@@ -187,9 +173,7 @@ func (ad *CephAdapter) GET(object *pb.Object, context context.Context, start int
 			return nil, S3Error{Code: 500, Description: "Download failed"}
 		} else {
 			log.Logf("Download succeed, bytes:%d\n", get_object.ContentLength)
-			//defer get_object.Body.Close()
-			//		body := bytes.NewReader(get_object.Body)
-			//		ioReaderClose := ioutil.NopCloser(body)
+
 			return get_object.Body, NoError
 		}
 	}
@@ -204,14 +188,7 @@ func (ad *CephAdapter) DELETE(object *pb.DeleteObjectInput, ctx context.Context)
 	ceph_object := bucket.NewObject(ad.backend.BucketName)
 
 	err := ceph_object.Remove(object.Key)
-	//bucket := ad.backend.BucketName
-	//
-	//newObjectKey := object.Bucket + "/" + object.Key
-	//
-	//deleteInput := awss3.DeleteObjectInput{Bucket: &bucket, Key: &newObjectKey}
-	//
-	//svc := awss3.New(ad.session)
-	//_, err := svc.DeleteObject(&deleteInput)
+
 	if err != nil {
 		log.Logf("Delete object failed, err:%v\n", err)
 		return InternalError
@@ -235,8 +212,7 @@ func (ad *CephAdapter) GetObjectInfo(bucketName string, key string, context cont
 			ObjectKey:  key,
 			Size:       resp.ContentLength,
 		}
-		//fmt.Println(resp)
-		//fmt.Println(resp.Header.Get("Content-Type"))
+
 		return objectInfo, NoError
 	}
 
@@ -299,39 +275,7 @@ func (ad *CephAdapter) UploadPart(stream io.Reader,
 			return result, NoError
 		}
 	}
-	//bucket := ad.backend.BucketName
-	//newObjectKey := multipartUpload.Bucket + "/" + multipartUpload.Key
-	//bytess, _ := ioutil.ReadAll(stream)
-	//upPartInput := &awss3.UploadPartInput{
-	//	Body:          bytes.NewReader(bytess),
-	//	Bucket:        &bucket,
-	//	Key:           &newObjectKey,
-	//	PartNumber:    aws.Int64(partNumber),
-	//	UploadId:      &multipartUpload.UploadId,
-	//	ContentLength: aws.Int64(upBytes),
-	//}
-	//log.Logf(">>>%v", upPartInput)
-	//
-	//svc := awss3.New(ad.session)
-	//for tries <= 3 {
-	//
-	//	upRes, err := svc.UploadPart(upPartInput)
-	//	if err != nil {
-	//		if tries == 3 {
-	//			log.Logf("[ERROR]Upload part to aws failed. err:%v\n", err)
-	//			return nil, S3Error{Code: 500, Description: "Upload failed"}
-	//		}
-	//		log.Logf("Retrying to upload part#%d ,err:%s\n", partNumber, err)
-	//		tries++
-	//	} else {
-	//		log.Logf("Uploaded part #%d, ETag:%s\n", partNumber, *upRes.ETag)
-	//		result := &model.UploadPartResult{
-	//			Xmlns:      model.Xmlns,
-	//			ETag:       *upRes.ETag,
-	//			PartNumber: partNumber}
-	//		return result, NoError
-	//	}
-	//}
+
 	return nil, NoError
 }
 
@@ -362,54 +306,12 @@ func (ad *CephAdapter) CompleteMultipartUpload(multipartUpload *pb.MultipartUplo
 		Key:      multipartUpload.Key,
 		ETag:     resp.Etag,
 	}
-	//bucket := ad.backend.BucketName
-	//newObjectKey := multipartUpload.Bucket + "/" + multipartUpload.Key
-	//var completeParts []*awss3.CompletedPart
-	//for _, p := range completeUpload.Part {
-	//	completePart := &awss3.CompletedPart{
-	//		ETag:       aws.String(p.ETag),
-	//		PartNumber: aws.Int64(p.PartNumber),
-	//	}
-	//	completeParts = append(completeParts, completePart)
-	//}
-	//completeInput := &awss3.CompleteMultipartUploadInput{
-	//	Bucket:   &bucket,
-	//	Key:      &newObjectKey,
-	//	UploadId: &multipartUpload.UploadId,
-	//	MultipartUpload: &awss3.CompletedMultipartUpload{
-	//		Parts: completeParts,
-	//	},
-	//}
-	//log.Logf("completeInput %v\n", completeInput)
-	//svc := awss3.New(ad.session)
-	//resp, err := svc.CompleteMultipartUpload(completeInput)
-	//if err != nil {
-	//	log.Logf("completeMultipartUploadS3 failed, err:%v\n", err)
-	//	return nil, S3Error{Code: 500, Description: err.Error()}
-	//}
-	//result := &model.CompleteMultipartUploadResult{
-	//	Xmlns:    model.Xmlns,
-	//	Location: *resp.Location,
-	//	Bucket:   multipartUpload.Bucket,
-	//	Key:      multipartUpload.Key,
-	//	ETag:     *resp.ETag,
-	//}
 
 	log.Logf("completeMultipartUploadS3 successfully, resp:%v\n", resp)
 	return result, NoError
 }
 
 func (ad *CephAdapter) AbortMultipartUpload(multipartUpload *pb.MultipartUpload, context context.Context) S3Error {
-	//bucket := ad.backend.BucketName
-	//newObjectKey := multipartUpload.Bucket + "/" + multipartUpload.Key
-	//abortInput := &awss3.AbortMultipartUploadInput{
-	//	Bucket:   &bucket,
-	//	Key:      &newObjectKey,
-	//	UploadId: &multipartUpload.UploadId,
-	//}
-	//
-	//svc := awss3.New(ad.session)
-	//rsp, err := svc.AbortMultipartUpload(abortInput)
 
 	bucket := ad.session.NewBucket()
 	ceph_object := bucket.NewObject(ad.backend.BucketName)
