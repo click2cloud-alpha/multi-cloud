@@ -20,7 +20,7 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws/credentials"
+	//"github.com/aws/aws-sdk-go/aws/credentials"
 
 	//"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/click2cloud-alpha/s3client"
@@ -53,10 +53,11 @@ type s3Cred struct {
 	sk string
 }
 
-func (myc *s3Cred) Retrieve() (credentials.Value, error) {
-	cred := credentials.Value{AccessKeyID: myc.ak, SecretAccessKey: myc.sk}
-	return cred, nil
-}
+//
+//func (myc *s3Cred) Retrieve() (credentials.Value, error) {
+//	cred := credentials.Value{AccessKeyID: myc.ak, SecretAccessKey: myc.sk}
+//	return cred, nil
+//}
 
 func (myc *s3Cred) IsExpired() bool {
 	return false
@@ -223,7 +224,7 @@ func (ad *CephAdapter) DELETE(object *pb.DeleteObjectInput, ctx context.Context)
 
 func (ad *CephAdapter) GetObjectInfo(bucketName string, key string, context context.Context) (*pb.Object, S3Error) {
 	bucket := ad.session.NewBucket()
-	object := bucket.NewObject(bucketName)
+	object := bucket.NewObject(ad.backend.BucketName)
 	resp, err := object.GetHeader(key, nil)
 	if err != nil {
 		log.Fatalf("Error occured during get Object Info, err:%v\n", err)
@@ -273,7 +274,6 @@ func (ad *CephAdapter) UploadPart(stream io.Reader,
 	ceph_object := bucket.NewObject(ad.backend.BucketName)
 	uploader := ceph_object.NewUploads(multipartUpload.Key)
 	for tries <= 3 {
-
 		//body := ioutil.NopCloser(bytes.NewReader(data))
 		d, err := ioutil.ReadAll(stream)
 		contain_type, err := getFileContentTypeCephOrAWS(d)

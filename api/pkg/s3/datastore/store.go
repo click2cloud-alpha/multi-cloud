@@ -16,6 +16,7 @@ package datastore
 
 import (
 	"context"
+	"github.com/opensds/multi-cloud/api/pkg/s3/datastore/ceph"
 	"io"
 
 	"github.com/opensds/multi-cloud/api/pkg/s3/datastore/aws"

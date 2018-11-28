@@ -3,6 +3,7 @@ package s3
 import (
 	"context"
 	"encoding/xml"
+	"fmt"
 	"github.com/opensds/multi-cloud/api/pkg/s3/datastore"
 	"net/http"
 	"strconv"
@@ -25,7 +26,8 @@ func (s *APIService) UploadPart(request *restful.Request, response *restful.Resp
 	partNumberInt, _ := strconv.ParseInt(partNumber, 10, 64)
 	ctx := context.WithValue(request.Request.Context(), "operation", "multipartupload")
 	objectInput := s3.GetObjectInput{Bucket: bucketName, Key: objectKey}
-	objectMD, _ := s.s3Client.GetObject(ctx, &objectInput)
+	objectMD, err1 := s.s3Client.GetObject(ctx, &objectInput)
+	fmt.Println(err1)
 	lastModified := time.Now().String()[:19]
 	object := s3.Object{}
 	object.ObjectKey = objectKey
