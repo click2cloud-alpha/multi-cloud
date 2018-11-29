@@ -25,7 +25,8 @@ func (s *APIService) RouteObjectPut(request *restful.Request, response *restful.
 		return
 	}
 	if IsQuery(request, "acl") {
-		//TODO
+		//TODO.
+
 	} else if IsQuery(request, "tagging") {
 		//TODO
 	} else if IsQuery(request, "uploads") {
