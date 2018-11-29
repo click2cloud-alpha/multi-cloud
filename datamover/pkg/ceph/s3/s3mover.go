@@ -264,11 +264,8 @@ func (mover *CephS3Mover) DownloadRange(objKey string, srcLoca *LocationInfo, bu
 	bucket := mover.downloader.CephS3.NewBucket()
 	cephObject := bucket.NewObject(srcLoca.BucketName)
 
-	var getObjectOption GetObjectOption
-	if start == int64(0) && end == int64(0) {
-
-		getObjectOption = GetObjectOption{}
-	} else {
+	getObjectOption := GetObjectOption{}
+	if start != int64(0) || end != int64(0) {
 		rangeObj := Range{start,
 			end,
 		}
@@ -276,8 +273,16 @@ func (mover *CephS3Mover) DownloadRange(objKey string, srcLoca *LocationInfo, bu
 			Range: &rangeObj,
 		}
 	}
+
 	getObject, err := cephObject.Get(objKey, &getObjectOption)
 	size = getObject.ContentLength
+	defer getObject.Body.Close()
+	d, err := ioutil.ReadAll(getObject.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	buf = []byte(d)
+
 	if err != nil {
 		log.Logf("Download object[%s] range[%d - %d] faild, err:%v\n", objKey, start, end, err)
 	} else {
