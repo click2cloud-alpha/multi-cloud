@@ -16,7 +16,7 @@ package datastore
 
 import (
 	"context"
-	"github.com/click2cloud-alpha/multi-cloud/api/pkg/s3/datastore/ceph"
+	"github.com/opensds/multi-cloud/api/pkg/s3/datastore/ceph"
 	"io"
 
 	"github.com/opensds/multi-cloud/api/pkg/s3/datastore/aws"

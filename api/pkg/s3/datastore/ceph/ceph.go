@@ -161,13 +161,19 @@ func (ad *CephAdapter) GET(object *pb.Object, context context.Context, start int
 		}
 		end = int64(i)
 	}
+	var getObjectOpetion GetObjectOption
+	if start == int64(0) && end == int64(0) {
+		getObjectOpetion = GetObjectOption{}
+	} else {
+		range_obj := Range{
+			start,
+			end,
+		}
+		getObjectOpetion = GetObjectOption{
+			Range: &range_obj,
+		}
+	}
 
-	range_obj := Range{start,
-		end,
-	}
-	getObjectOpetion := GetObjectOption{
-		Range: &range_obj,
-	}
 	if context.Value("operation") == "download" {
 		bucket := ad.session.NewBucket()
 
