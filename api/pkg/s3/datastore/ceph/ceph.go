@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Huawei Technologies Co., Ltd. All Rights Reserved.
+// Copyright (c) 2018 Click2Cloud Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,47 +20,24 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"fmt"
-	//"github.com/aws/aws-sdk-go/aws/credentials"
 
-	//"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"github.com/click2cloud-alpha/s3client"
-	. "github.com/click2cloud-alpha/s3client"
-	"github.com/click2cloud-alpha/s3client/models"
+	"io"
+	"io/ioutil"
+	"time"
+
 	"github.com/micro/go-log"
 	backendpb "github.com/opensds/multi-cloud/backend/proto"
 	. "github.com/opensds/multi-cloud/s3/pkg/exception"
 	"github.com/opensds/multi-cloud/s3/pkg/model"
 	pb "github.com/opensds/multi-cloud/s3/proto"
-	"io"
-	"io/ioutil"
-	"net/http"
-	"strconv"
+	"github.com/webrtcn/s3client"
+	. "github.com/webrtcn/s3client"
+	"github.com/webrtcn/s3client/models"
 )
 
 type CephAdapter struct {
 	backend *backendpb.BackendDetail
 	session *s3client.Client
-}
-
-type CephAWSHelper struct {
-	accessKey string
-	secretKey string
-	endPoint  string
-}
-
-type s3Cred struct {
-	ak string
-	sk string
-}
-
-//
-//func (myc *s3Cred) Retrieve() (credentials.Value, error) {
-//	cred := credentials.Value{AccessKeyID: myc.ak, SecretAccessKey: myc.sk}
-//	return cred, nil
-//}
-
-func (myc *s3Cred) IsExpired() bool {
-	return false
 }
 
 func Init(backend *backendpb.BackendDetail) *CephAdapter {
@@ -80,101 +57,64 @@ func md5Content(data []byte) string {
 	return value
 }
 
-//This function is used to get object contain type
-func getFileContentTypeCephOrAWS(out []byte) (string, error) {
-
-	// Only the first 512 bytes are used to sniff the content type.
-	buffer := make([]byte, 512)
-
-	_ = len(buffer)
-
-	// Use the net/http package's handy DectectContentType function. Always returns a valid
-	// content-type by returning "application/octet-stream" if no others seemed to match.
-	contentType := http.DetectContentType(buffer)
-
-	return contentType, nil
-}
-
 func (ad *CephAdapter) PUT(stream io.Reader, object *pb.Object, ctx context.Context) S3Error {
-	//bucketName := ad.backend.BucketName
-	//
-	//newObjectKey := object.BucketName + "/" + object.ObjectKey
+	bucketName := ad.backend.BucketName
+
+	newObjectKey := object.BucketName + "/" + object.ObjectKey
 
 	if ctx.Value("operation") == "upload" {
 		bucket := ad.session.NewBucket()
 
-		ceph_object := bucket.NewObject(ad.backend.BucketName)
+		cephObject := bucket.NewObject(bucketName)
 
 		d, err := ioutil.ReadAll(stream)
 		data := []byte(d)
-		md5 := md5Content(data)
-		contentType, err := getFileContentTypeCephOrAWS(data)
-
+		contentMD5 := md5Content(data)
 		length := int64(len(d))
 		body := ioutil.NopCloser(bytes.NewReader(data))
 
-		err = ceph_object.Create(object.ObjectKey, md5, string(contentType), length, body, models.PublicReadWrite)
+		err = cephObject.Create(newObjectKey, contentMD5, "", length, body, models.Private)
+
 		if err != nil {
-			s3error := S3Error{501, err.Error()}
-
-			return s3error
+			log.Logf("Upload to ceph failed:%v", err)
+			return S3Error{Code: 500, Description: "Upload to ceph failed"}
+		} else {
+			object.LastModified = time.Now().String()[:19]
+			log.Logf("LastModified is:%v\n", object.LastModified)
 		}
-
 	}
 
 	return NoError
 }
 
 func (ad *CephAdapter) GET(object *pb.Object, context context.Context, start int64, end int64) (io.ReadCloser, S3Error) {
-	strStart := ""
-	strEnd := ""
+	newObjectKey := object.BucketName + "/" + object.ObjectKey
+
+	getObjectOption := GetObjectOption{}
 	if start != 0 || end != 0 {
-		strStart = strconv.FormatInt(start, 10)
-		strEnd = strconv.FormatInt(end, 10)
-		//rangestr := "bytes=" + strStart + "-" + strEnd
-		//getObjectInput.SetRange(rangestr)
-	}
-	if strStart != "" {
-		i, err := strconv.Atoi(strStart)
-		if err != nil {
-			fmt.Println(err)
+		rangeObj := Range{
+			Begin: start,
+			End:   end,
 		}
-		start = int64(i)
-	}
-	if strEnd != "" {
-		i, err := strconv.Atoi(strEnd)
-		if err != nil {
-			fmt.Println(err)
-		}
-		end = int64(i)
-	}
-	var getObjectOpetion GetObjectOption
-	if start == int64(0) && end == int64(0) {
-		getObjectOpetion = GetObjectOption{}
-	} else {
-		range_obj := Range{
-			start,
-			end,
-		}
-		getObjectOpetion = GetObjectOption{
-			Range: &range_obj,
+		getObjectOption = GetObjectOption{
+			Range: &rangeObj,
 		}
 	}
 
 	if context.Value("operation") == "download" {
 		bucket := ad.session.NewBucket()
 
-		ceph_object := bucket.NewObject(ad.backend.BucketName)
+		cephObject := bucket.NewObject(ad.backend.BucketName)
 
-		get_object, err := ceph_object.Get(object.ObjectKey, &getObjectOpetion)
+		getObject, err := cephObject.Get(newObjectKey, &getObjectOption)
 		if err != nil {
 			fmt.Println(err)
 			log.Logf("Download failed:%v", err)
 			return nil, S3Error{Code: 500, Description: "Download failed"}
 		} else {
-			log.Logf("Download succeed, bytes:%d\n", get_object.ContentLength)
+			log.Logf("Download succeed, bytes:%d\n", getObject.ContentLength)
 
-			return get_object.Body, NoError
+			return getObject.Body, NoError
 		}
 	}
 
@@ -185,57 +125,69 @@ func (ad *CephAdapter) DELETE(object *pb.DeleteObjectInput, ctx context.Context)
 
 	bucket := ad.session.NewBucket()
 
-	ceph_object := bucket.NewObject(ad.backend.BucketName)
+	newObjectKey := object.Bucket + "/" + object.Key
 
-	err := ceph_object.Remove(object.Key)
+	cephObject := bucket.NewObject(ad.backend.BucketName)
+
+	err := cephObject.Remove(newObjectKey)
 
 	if err != nil {
 		log.Logf("Delete object failed, err:%v\n", err)
 		return InternalError
 	}
 
-	log.Logf("Delete object %s from aws successfully.\n", object.Key)
+	log.Logf("Delete object %s from ceph successfully.\n", newObjectKey)
 
 	return NoError
 }
 
 func (ad *CephAdapter) GetObjectInfo(bucketName string, key string, context context.Context) (*pb.Object, S3Error) {
-	bucket := ad.session.NewBucket()
-	object := bucket.NewObject(ad.backend.BucketName)
-	resp, err := object.GetHeader(key, nil)
-	if err != nil {
-		log.Logf("Error occured during get Object Info, err:%v\n", err)
-		//log.Fatalf("Error occured during get Object Info, err:%v\n", err)
-		return nil, S3Error{Code: 500, Description: err.Error()}
-	} else {
-		objectInfo := &pb.Object{
-			BucketName: bucketName,
-			ObjectKey:  key,
-			Size:       resp.ContentLength,
-		}
 
-		return objectInfo, NoError
+	bucket := ad.backend.BucketName
+	newKey := bucketName + "/" + key
+
+	bucketO := ad.session.NewBucket()
+	bucketResp, err := bucketO.Get(bucket, newKey, "", "", 1000)
+
+	if err != nil {
+		log.Fatalf("Error occured during get Object Info, err:%v\n", err)
+		return nil, S3Error{Code: 500, Description: err.Error()}
 	}
 
-	log.Logf("Can not find spceified object(%s).\n", key)
+	for _, content := range bucketResp.Contents {
+		realKey := bucketName + "/" + key
+		if realKey != content.Key {
+			break
+		}
+		obj := &pb.Object{
+			BucketName: bucketName,
+			ObjectKey:  key,
+			Size:       content.Size,
+		}
+
+		return obj, NoError
+	}
+
+	log.Logf("Can not find specified object(%s).\n", key)
 	return nil, NoSuchObject
 }
 
 func (ad *CephAdapter) InitMultipartUpload(object *pb.Object, context context.Context) (*pb.MultipartUpload, S3Error) {
 	bucket := ad.session.NewBucket()
-	ceph_object := bucket.NewObject(ad.backend.BucketName)
-	uploader := ceph_object.NewUploads(object.ObjectKey)
+	newObjectKey := object.BucketName + "/" + object.ObjectKey
+	log.Logf("bucket = %v,newObjectKey = %v\n", bucket, newObjectKey)
+	cephObject := bucket.NewObject(ad.backend.BucketName)
+	uploader := cephObject.NewUploads(newObjectKey)
 	multipartUpload := &pb.MultipartUpload{}
 
 	res, err := uploader.Initiate(nil)
 
 	if err != nil {
-		s3error := S3Error{500, err.Error()}
-
-		return nil, s3error
+		log.Fatalf("Init s3 multipart upload failed, err:%v\n", err)
+		return nil, S3Error{Code: 500, Description: err.Error()}
 	} else {
-		//sample.UploadId = res.UploadID
-		multipartUpload.Bucket = ad.backend.BucketName
+		log.Logf("Init s3 multipart upload succeed, UploadId:%s\n", res.UploadID)
+		multipartUpload.Bucket = object.BucketName
 		multipartUpload.Key = object.ObjectKey
 		multipartUpload.UploadId = res.UploadID
 		return multipartUpload, NoError
@@ -247,22 +199,22 @@ func (ad *CephAdapter) UploadPart(stream io.Reader,
 	partNumber int64, upBytes int64,
 	context context.Context) (*model.UploadPartResult, S3Error) {
 	tries := 1
+	newObjectKey := multipartUpload.Bucket + "/" + multipartUpload.Key
 	bucket := ad.session.NewBucket()
-	ceph_object := bucket.NewObject(ad.backend.BucketName)
-	uploader := ceph_object.NewUploads(multipartUpload.Key)
+
+	cephObject := bucket.NewObject(ad.backend.BucketName)
+	uploader := cephObject.NewUploads(newObjectKey)
 	for tries <= 3 {
-		//body := ioutil.NopCloser(bytes.NewReader(data))
 		d, err := ioutil.ReadAll(stream)
-		contain_type, err := getFileContentTypeCephOrAWS(d)
 		data := []byte(d)
 		body := ioutil.NopCloser(bytes.NewReader(data))
-		md5 := md5Content(data)
-		length := int64(len(data))
-		part, err := uploader.UploadPart(int(partNumber), multipartUpload.UploadId, md5, contain_type, length, body)
+		contentMD5 := md5Content(data)
+		//length := int64(len(data))
+		part, err := uploader.UploadPart(int(partNumber), multipartUpload.UploadId, contentMD5, "", upBytes, body)
 
 		if err != nil {
 			if tries == 3 {
-				log.Logf("[ERROR]Upload part to aws failed. err:%v\n", err)
+				log.Logf("[ERROR]Upload part to ceph failed. err:%v\n", err)
 				return nil, S3Error{Code: 500, Description: "Upload failed"}
 			}
 			log.Logf("Retrying to upload part#%d ,err:%s\n", partNumber, err)
@@ -283,10 +235,10 @@ func (ad *CephAdapter) UploadPart(stream io.Reader,
 func (ad *CephAdapter) CompleteMultipartUpload(multipartUpload *pb.MultipartUpload,
 	completeUpload *model.CompleteMultipartUpload,
 	context context.Context) (*model.CompleteMultipartUploadResult, S3Error) {
-
+	newObjectKey := multipartUpload.Bucket + "/" + multipartUpload.Key
 	bucket := ad.session.NewBucket()
-	ceph_object := bucket.NewObject(ad.backend.BucketName)
-	uploader := ceph_object.NewUploads(multipartUpload.Key)
+	cephObject := bucket.NewObject(ad.backend.BucketName)
+	uploader := cephObject.NewUploads(newObjectKey)
 	var completeParts []CompletePart
 	for _, p := range completeUpload.Part {
 		completePart := CompletePart{
@@ -308,37 +260,60 @@ func (ad *CephAdapter) CompleteMultipartUpload(multipartUpload *pb.MultipartUplo
 		ETag:     resp.Etag,
 	}
 
-	log.Logf("completeMultipartUploadS3 successfully, resp:%v\n", resp)
+	log.Logf("completeMultipartUploadS3 successful, resp:%v\n", resp)
 	return result, NoError
 }
 
 func (ad *CephAdapter) AbortMultipartUpload(multipartUpload *pb.MultipartUpload, context context.Context) S3Error {
-
+	newObjectKey := multipartUpload.Bucket + "/" + multipartUpload.Key
 	bucket := ad.session.NewBucket()
-	ceph_object := bucket.NewObject(ad.backend.BucketName)
-	uploader := ceph_object.NewUploads(multipartUpload.Key)
+	cephObject := bucket.NewObject(ad.backend.BucketName)
+	uploader := cephObject.NewUploads(newObjectKey)
 	err := uploader.RemoveUploads(multipartUpload.UploadId)
 
 	if err != nil {
 		log.Logf("abortMultipartUploadS3 failed, err:%v\n", err)
 		return S3Error{Code: 500, Description: err.Error()}
 	} else {
-		log.Logf("abortMultipartUploadS3 successfully\n")
+		log.Logf("abortMultipartUploadS3 successful\n")
 	}
 	return NoError
 }
 
 func (ad *CephAdapter) ListParts(listParts *pb.ListParts, context context.Context) (*model.ListPartsOutput, S3Error) {
+	newObjectKey := listParts.Bucket + "/" + listParts.Key
 	bucket := ad.session.NewBucket()
-	ceph_object := bucket.NewObject(listParts.Bucket)
-	uploader := ceph_object.NewUploads(listParts.Key)
+	cephObject := bucket.NewObject(ad.backend.BucketName)
+	uploader := cephObject.NewUploads(newObjectKey)
 
-	value1, err := uploader.ListPart(listParts.UploadId)
+	listPartsResult, err := uploader.ListPart(listParts.UploadId)
 	if err != nil {
-		fmt.Println("Error Occured")
-		fmt.Println(err)
+		log.Logf("List parts failed, err:%v\n", err)
+		return nil, S3Error{Code: 500, Description: err.Error()}
 	} else {
-		fmt.Println(value1)
+		log.Logf("List parts successful\n")
+		var parts []model.Part
+		for _, p := range listPartsResult.Parts {
+			part := model.Part{
+				ETag:       p.Etag,
+				PartNumber: int64(p.PartNumber),
+			}
+			parts = append(parts, part)
+		}
+		listPartsOutput := &model.ListPartsOutput{
+			Xmlns:       model.Xmlns,
+			Key:         listPartsResult.Key,
+			Bucket:      listParts.Bucket,
+			IsTruncated: listPartsResult.IsTruncated,
+			MaxParts:    listPartsResult.MaxParts,
+			Owner: model.Owner{
+				ID:          listPartsResult.Owner.OwnerID,
+				DisplayName: listPartsResult.Owner.DisplayName,
+			},
+			UploadId: listPartsResult.UploadID,
+			Parts:    parts,
+		}
+
+		return listPartsOutput, NoError
 	}
-	return nil, NoError
 }

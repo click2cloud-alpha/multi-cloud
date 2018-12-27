@@ -17,11 +17,12 @@ package obsmover
 import (
 	"bytes"
 	"errors"
+	"io"
+
 	"github.com/micro/go-log"
+	"github.com/opensds/multi-cloud/api/pkg/utils/obs"
 	. "github.com/opensds/multi-cloud/datamover/pkg/utils"
 	pb "github.com/opensds/multi-cloud/datamover/proto"
-	"io"
-	"obs"
 )
 
 type ObsMover struct {

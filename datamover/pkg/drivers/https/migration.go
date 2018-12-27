@@ -5,22 +5,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"os"
+	"regexp"
+	"strconv"
+	"time"
+
 	"github.com/globalsign/mgo/bson"
 	"github.com/micro/go-micro/client"
 	"github.com/opensds/multi-cloud/backend/proto"
 	flowtype "github.com/opensds/multi-cloud/dataflow/pkg/model"
 	"github.com/opensds/multi-cloud/datamover/pkg/amazon/s3"
 	"github.com/opensds/multi-cloud/datamover/pkg/azure/blob"
+	"github.com/opensds/multi-cloud/datamover/pkg/ceph/s3"
 	"github.com/opensds/multi-cloud/datamover/pkg/db"
 	"github.com/opensds/multi-cloud/datamover/pkg/hw/obs"
 	. "github.com/opensds/multi-cloud/datamover/pkg/utils"
 	pb "github.com/opensds/multi-cloud/datamover/proto"
 	osdss3 "github.com/opensds/multi-cloud/s3/proto"
-	"log"
-	"os"
-	"regexp"
-	"strconv"
-	"time"
 )
 
 var simuRoutines = 10
@@ -107,7 +109,7 @@ func getConnLocation(ctx context.Context, conn *pb.Connector) (*LocationInfo, er
 			}
 			return getOsdsLocation(ctx, virtBkname, rspbk.Backend)
 		}
-	case flowtype.STOR_TYPE_AWS_S3, flowtype.STOR_TYPE_HW_OBS, flowtype.STOR_TYPE_HW_FUSIONSTORAGE, flowtype.STOR_TYPE_AZURE_BLOB:
+	case flowtype.STOR_TYPE_AWS_S3, flowtype.STOR_TYPE_HW_OBS, flowtype.STOR_TYPE_HW_FUSIONSTORAGE, flowtype.STOR_TYPE_AZURE_BLOB, flowtype.STOR_TYPE_CEPH_S3:
 		{
 			cfg := conn.ConnConfig
 			loca := LocationInfo{}
@@ -163,6 +165,9 @@ func moveObj(obj *osdss3.Object, srcLoca *LocationInfo, destLoca *LocationInfo) 
 	case flowtype.STOR_TYPE_AZURE_BLOB:
 		downloader = &blobmover.BlobMover{}
 		size, err = downloader.DownloadObj(downloadObjKey, srcLoca, buf)
+	case flowtype.STOR_TYPE_CEPH_S3:
+		downloader = &cephs3mover.CephS3Mover{}
+		size, err = downloader.DownloadObj(downloadObjKey, srcLoca, buf)
 	default:
 		{
 			logger.Printf("Not support source backend type:%v\n", srcLoca.StorType)
@@ -192,6 +197,9 @@ func moveObj(obj *osdss3.Object, srcLoca *LocationInfo, destLoca *LocationInfo) 
 	case flowtype.STOR_TYPE_AZURE_BLOB:
 		uploader = &blobmover.BlobMover{}
 		err = uploader.UploadObj(uploadObjKey, destLoca, buf)
+	case flowtype.STOR_TYPE_CEPH_S3:
+		uploader = &cephs3mover.CephS3Mover{}
+		err = uploader.UploadObj(uploadObjKey, destLoca, buf)
 	default:
 		logger.Printf("Not support destination backend type:%v\n", destLoca.StorType)
 		return errors.New("Not support destination backend type.")
@@ -219,6 +227,11 @@ func multiPartDownloadInit(srcLoca *LocationInfo) (mover MoveWorker, err error) 
 		mover := &blobmover.BlobMover{}
 		err := mover.MultiPartDownloadInit(srcLoca)
 		return mover, err
+	case flowtype.STOR_TYPE_CEPH_S3:
+		mover := &cephs3mover.CephS3Mover{}
+		err := mover.MultiPartDownloadInit(srcLoca)
+		return mover, err
+
 	default:
 		logger.Printf("Unsupport storType[%s] to init multipart download.\n", srcLoca.StorType)
 	}
@@ -240,6 +253,10 @@ func multiPartUploadInit(objKey string, destLoca *LocationInfo) (mover MoveWorke
 		mover := &blobmover.BlobMover{}
 		err := mover.MultiPartUploadInit(objKey, destLoca)
 		return mover, err
+	case flowtype.STOR_TYPE_CEPH_S3:
+		mover := &cephs3mover.CephS3Mover{}
+		err := mover.MultiPartUploadInit(objKey, destLoca)
+		return mover, err
 	default:
 		logger.Printf("Unsupport storType[%s] to download.\n", destLoca.StorType)
 	}
@@ -250,7 +267,7 @@ func multiPartUploadInit(objKey string, destLoca *LocationInfo) (mover MoveWorke
 func abortMultipartUpload(objKey string, destLoca *LocationInfo, mover MoveWorker) error {
 	switch destLoca.StorType {
 	case flowtype.STOR_TYPE_AWS_S3, flowtype.STOR_TYPE_HW_OBS, flowtype.STOR_TYPE_HW_FUSIONSTORAGE,
-		flowtype.STOR_TYPE_HW_FUSIONCLOUD, flowtype.STOR_TYPE_AZURE_BLOB:
+		flowtype.STOR_TYPE_HW_FUSIONCLOUD, flowtype.STOR_TYPE_AZURE_BLOB, flowtype.STOR_TYPE_CEPH_S3:
 		return mover.AbortMultipartUpload(objKey, destLoca)
 	default:
 		logger.Printf("Unsupport storType[%s] to download.\n", destLoca.StorType)
@@ -262,7 +279,7 @@ func abortMultipartUpload(objKey string, destLoca *LocationInfo, mover MoveWorke
 func completeMultipartUpload(objKey string, destLoca *LocationInfo, mover MoveWorker) error {
 	switch destLoca.StorType {
 	case flowtype.STOR_TYPE_AWS_S3, flowtype.STOR_TYPE_HW_OBS, flowtype.STOR_TYPE_HW_FUSIONSTORAGE,
-		flowtype.STOR_TYPE_HW_FUSIONCLOUD, flowtype.STOR_TYPE_AZURE_BLOB:
+		flowtype.STOR_TYPE_HW_FUSIONCLOUD, flowtype.STOR_TYPE_AZURE_BLOB, flowtype.STOR_TYPE_CEPH_S3:
 		return mover.CompleteMultipartUpload(objKey, destLoca)
 	default:
 		logger.Printf("Unsupport storType[%s] to download.\n", destLoca.StorType)
@@ -363,6 +380,9 @@ func deleteObj(ctx context.Context, obj *osdss3.Object, loca *LocationInfo) erro
 		err = mover.DeleteObj(objKey, loca)
 	case flowtype.STOR_TYPE_AZURE_BLOB:
 		mover := blobmover.BlobMover{}
+		err = mover.DeleteObj(objKey, loca)
+	case flowtype.STOR_TYPE_CEPH_S3:
+		mover := cephs3mover.CephS3Mover{}
 		err = mover.DeleteObj(objKey, loca)
 	default:
 		logger.Printf("Delete object[objkey:%s] from backend storage failed.\n", obj.ObjectKey)
@@ -558,6 +578,22 @@ func getAzureBlobs(ctx context.Context, conn *pb.Connector, filt *pb.Filter,
 	return srcObjs, nil
 }
 
+//to get object details from ceph backend
+func getCephS3Objs(ctx context.Context, conn *pb.Connector, filt *pb.Filter,
+	defaultSrcLoca *LocationInfo) ([]*osdss3.Object, error) {
+	srcObjs := []*osdss3.Object{}
+	objs, err := cephs3mover.ListObjs(defaultSrcLoca, filt)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < len(objs); i++ {
+		obj := osdss3.Object{Size: objs[i].Size, ObjectKey: objs[i].Key, Backend: ""}
+		//srcObjs = append(srcObjs, &SourceOject{StorType:defaultSrcLoca.StorType, Obj:&obj})
+		srcObjs = append(srcObjs, &obj)
+	}
+	return srcObjs, nil
+}
+
 func getSourceObjs(ctx context.Context, conn *pb.Connector, filt *pb.Filter,
 	defaultSrcLoca *LocationInfo) ([]*osdss3.Object, error) {
 	switch conn.Type {
@@ -569,6 +605,8 @@ func getSourceObjs(ctx context.Context, conn *pb.Connector, filt *pb.Filter,
 		return getHwObjs(ctx, conn, filt, defaultSrcLoca)
 	case flowtype.STOR_TYPE_AZURE_BLOB:
 		return getAzureBlobs(ctx, conn, filt, defaultSrcLoca)
+	case flowtype.STOR_TYPE_CEPH_S3:
+		return getCephS3Objs(ctx, conn, filt, defaultSrcLoca)
 	default:
 		{
 			logger.Printf("Unsupport storage type:%v\n", conn.Type)
