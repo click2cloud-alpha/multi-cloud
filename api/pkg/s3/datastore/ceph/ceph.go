@@ -204,7 +204,8 @@ func (ad *CephAdapter) GetObjectInfo(bucketName string, key string, context cont
 	object := bucket.NewObject(ad.backend.BucketName)
 	resp, err := object.GetHeader(key, nil)
 	if err != nil {
-		log.Fatalf("Error occured during get Object Info, err:%v\n", err)
+		log.Logf("Error occured during get Object Info, err:%v\n", err)
+		//log.Fatalf("Error occured during get Object Info, err:%v\n", err)
 		return nil, S3Error{Code: 500, Description: err.Error()}
 	} else {
 		objectInfo := &pb.Object{
